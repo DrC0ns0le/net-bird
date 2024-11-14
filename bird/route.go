@@ -3,7 +3,6 @@ package bird
 import (
 	"fmt"
 	"net"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -24,8 +23,8 @@ type BGPPath struct {
 	OriginType      string
 }
 
-func GetRoutes() ([]Route, error) {
-	conn, reader, writer, err := Begin()
+func GetRoutes(mode string) ([]Route, error) {
+	conn, reader, writer, err := Begin(mode)
 	if err != nil {
 		return nil, err
 	}
@@ -35,8 +34,7 @@ func GetRoutes() ([]Route, error) {
 	// Send command to show routes
 	_, err = writer.WriteString("show route all\n")
 	if err != nil {
-		fmt.Printf("Error writing to BIRD socket: %v\n", err)
-		os.Exit(1)
+		return nil, err
 	}
 	writer.Flush()
 
@@ -59,6 +57,11 @@ func GetRoutes() ([]Route, error) {
 		}
 
 		if strings.HasPrefix(line, "1007-") {
+
+			if bgpPath.ASPath != nil {
+				route.Paths = append(route.Paths, bgpPath)
+				bgpPath = BGPPath{}
+			}
 
 			// split to fields separated by space
 			splits := strings.Fields(line)
@@ -110,25 +113,20 @@ func GetRoutes() ([]Route, error) {
 			}
 		}
 
-		if strings.HasPrefix(line, "1012-") && isBGP {
-			// if EBGP or IBGP
-			split := strings.Split(line, ":")
-			bgpPath.OriginType = strings.TrimSpace(split[1])
+		if (strings.HasPrefix(line, "1012-") || strings.HasPrefix(strings.TrimSpace(line), "BGP.")) && isBGP {
+			halfSplit := strings.SplitN(line, "BGP.", 2)
+			split := strings.SplitN(halfSplit[1], ":", 2)
 
-			// read AS path
-			line, err = reader.ReadString('\n')
-			if err != nil {
-				break
-			}
-			line = strings.TrimSpace(line)
-			split = strings.Split(line, ":")
-			if len(split) == 2 {
-				asPathString := strings.TrimSpace(split[1])
+			switch split[0] {
+			case "origin":
+				bgpPath.OriginType = strings.TrimSpace(split[1])
+			case "next_hop":
+				bgpPath.Next = net.ParseIP(strings.TrimSpace(split[1]))
+			case "as_path":
+				if split[1] != "" {
+					sp := strings.Split(strings.TrimSpace(split[1]), " ")
 
-				if asPathString != "" {
-					split = strings.Split(asPathString, " ")
-
-					for i, as := range split {
+					for i, as := range sp {
 						asInt, err := strconv.Atoi(strings.TrimSpace(as))
 						if err != nil {
 							fmt.Printf("Error parsing path number: %v, got '%s'\n", err, line)
@@ -141,63 +139,19 @@ func GetRoutes() ([]Route, error) {
 						}
 					}
 				}
-
-			}
-
-			// read next hop
-			line, err = reader.ReadString('\n')
-			if err != nil {
-				break
-			}
-			line = strings.TrimSpace(line)
-			split = strings.Split(line, ":")
-			if len(split) == 2 {
-				nextHop := strings.TrimSpace(split[1])
-				if nextHop != "" {
-					bgpPath.Next = net.ParseIP(nextHop)
-				}
-			}
-
-			// read MED
-			if bgpPath.OriginType == "BGP" {
-				line, err = reader.ReadString('\n')
+			case "local_pref":
+				bgpPath.LocalPreference, err = strconv.Atoi(strings.TrimSpace(split[1]))
 				if err != nil {
-					break
+					fmt.Printf("Error parsing path number: %v, got '%s'\n", err, line)
+					return nil, err
 				}
-				line = strings.TrimSpace(line)
-				split = strings.Split(line, ":")
-				if len(split) == 2 {
-					med := strings.TrimSpace(split[1])
-					if med != "" {
-						bgpPath.MED, err = strconv.Atoi(med)
-						if err != nil {
-							fmt.Println("Error parsing MED number:", err)
-							return nil, err
-						}
-					}
+			case "med":
+				bgpPath.MED, err = strconv.Atoi(strings.TrimSpace(split[1]))
+				if err != nil {
+					fmt.Printf("Error parsing path number: %v, got '%s'\n", err, line)
+					return nil, err
 				}
 			}
-
-			// read local preference
-			line, err = reader.ReadString('\n')
-			if err != nil {
-				break
-			}
-			line = strings.TrimSpace(line)
-			split = strings.Split(line, ":")
-			if len(split) == 2 {
-				localPreference := strings.TrimSpace(split[1])
-				if localPreference != "" {
-					bgpPath.LocalPreference, err = strconv.Atoi(localPreference)
-					if err != nil {
-						fmt.Println("Error parsing local preference number:", err)
-						return nil, err
-					}
-				}
-			}
-
-			route.Paths = append(route.Paths, bgpPath)
-			bgpPath = BGPPath{}
 		}
 	}
 

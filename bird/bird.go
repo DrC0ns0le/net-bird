@@ -4,21 +4,27 @@ import (
 	"bufio"
 	"fmt"
 	"net"
-	"os"
 	"strings"
 	"time"
+
+	"github.com/DrC0ns0le/net-bird/logging"
 )
 
 const (
-	birdSocket = "/run/bird/bird.ctl"
-	timeout    = 10 * time.Second
+	birdSocket  = "/run/bird/bird.ctl"
+	bird6Socket = "/run/bird/bird6.ctl" // for IPv6 Socket
+	timeout     = 10 * time.Second
 )
 
-func Begin() (net.Conn, *bufio.Reader, *bufio.Writer, error) {
-	conn, err := net.DialTimeout("unix", birdSocket, timeout)
+func Begin(mode string) (net.Conn, *bufio.Reader, *bufio.Writer, error) {
+	conn, err := net.DialTimeout("unix", func() string {
+		if mode == "v6" {
+			return bird6Socket
+		}
+		return birdSocket
+	}(), timeout)
 	if err != nil {
-		fmt.Printf("Error connecting to BIRD socket: %v\n", err)
-		os.Exit(1)
+		return nil, nil, nil, fmt.Errorf("error connecting to BIRD socket: %v", err)
 	}
 
 	conn.SetDeadline(time.Now().Add(timeout))
@@ -29,10 +35,9 @@ func Begin() (net.Conn, *bufio.Reader, *bufio.Writer, error) {
 	// Read the welcome message
 	welcome, err := reader.ReadString('\n')
 	if err != nil {
-		fmt.Printf("Error reading welcome message: %v\n", err)
-		os.Exit(1)
+		return nil, nil, nil, fmt.Errorf("error reading welcome message: %v", err)
 	}
-	fmt.Print("Welcome message: ", strings.TrimPrefix(welcome, "0001 "))
+	logging.Debug("Welcome message: ", strings.TrimPrefix(welcome, "0001 "))
 
 	return conn, reader, writer, nil
 }
