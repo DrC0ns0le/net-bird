@@ -51,14 +51,14 @@ func GetRoutes(mode string) ([]Route, error) {
 			break
 		}
 		line = strings.TrimSpace(line)
-
+	READLINE:
 		if strings.HasPrefix(line, "0000") {
 			break // End of data
 		}
 
 		if strings.HasPrefix(line, "1007-") {
 
-			if bgpPath.ASPath != nil {
+			if bgpPath.Next != nil || bgpPath.Interface != "" {
 				route.Paths = append(route.Paths, bgpPath)
 				bgpPath = BGPPath{}
 			}
@@ -84,6 +84,8 @@ func GetRoutes(mode string) ([]Route, error) {
 				var typeFields []string
 				if strings.HasPrefix(nextLine, "1008-	Type:") {
 					typeFields = strings.Fields(strings.SplitN(nextLine, ":", 2)[1])
+				} else {
+					goto READLINE
 				}
 				if len(typeFields) > 0 && strings.TrimSpace(typeFields[0]) == "BGP" {
 					isBGP = true
@@ -129,7 +131,7 @@ func GetRoutes(mode string) ([]Route, error) {
 			case "origin":
 				bgpPath.OriginType = strings.TrimSpace(split[1])
 			case "next_hop":
-				bgpPath.Next = net.ParseIP(strings.TrimSpace(split[1]))
+				bgpPath.Next = net.ParseIP(strings.Fields(strings.TrimSpace(split[1]))[0])
 			case "as_path":
 				if split[1] != "" {
 					sp := strings.Split(strings.TrimSpace(split[1]), " ")
@@ -163,6 +165,14 @@ func GetRoutes(mode string) ([]Route, error) {
 				}
 			}
 		}
+	}
+
+	// Append the last completed route
+	if route.Network != nil {
+		if bgpPath.Next != nil || bgpPath.Interface != "" {
+			route.Paths = append(route.Paths, bgpPath)
+		}
+		routes = append(routes, route)
 	}
 
 	return routes, nil

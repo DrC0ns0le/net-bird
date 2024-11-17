@@ -220,7 +220,7 @@ func UpdateRoutes(ctx context.Context, routes []bird.Route, mode string) {
 			}
 		}
 
-		if len(route.Paths[chosenPathIndex].ASPath) == 0 {
+		if len(route.Paths[chosenPathIndex].ASPath) == 0 || !strings.HasPrefix(route.Paths[chosenPathIndex].Interface, "wg") {
 			continue
 		} else if err := utils.ConfigureRoute(route.Network, route.Paths[chosenPathIndex].Next, func() net.IP {
 			if mode == "v6" {
