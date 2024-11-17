@@ -77,13 +77,21 @@ func GetRoutes(mode string) ([]Route, error) {
 				}
 
 				// check if this route is a BGP route
-				if len(splits) == 10 {
+				nextLine, err := reader.ReadString('\n')
+				if err != nil {
+					return nil, err
+				}
+				var typeFields []string
+				if strings.HasPrefix(nextLine, "1008-	Type:") {
+					typeFields = strings.Fields(strings.SplitN(nextLine, ":", 2)[1])
+				}
+				if len(typeFields) > 0 && strings.TrimSpace(typeFields[0]) == "BGP" {
 					isBGP = true
 					_, ipnet, _ := net.ParseCIDR(rt)
 					route.Network = ipnet
 
 					if route.OriginAS == 0 {
-						originAS := splits[9]
+						originAS := splits[len(splits)-1]
 						if originAS != "" {
 							// Use regex to extract only digits
 							re := regexp.MustCompile(`\d+`)
@@ -138,6 +146,8 @@ func GetRoutes(mode string) ([]Route, error) {
 							bgpPath.AS = asInt
 						}
 					}
+				} else {
+					bgpPath.ASPath = make([]int, 0)
 				}
 			case "local_pref":
 				bgpPath.LocalPreference, err = strconv.Atoi(strings.TrimSpace(split[1]))

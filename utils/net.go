@@ -60,7 +60,7 @@ func GetOutboundIPs() (net.IP, net.IP, error) {
 
 			// Check if this is an IPv6 address
 			if ip := ipNet.IP.To16(); ip != nil && ipNet.IP.To4() == nil {
-				if ip.IsPrivate() && strings.HasPrefix(ip.String(), "fdac:c9:") {
+				if ip.IsPrivate() && strings.HasPrefix(ip.String(), "fdac:c9:") && strings.HasSuffix(ip.String(), "::2") {
 					ipv6Addr = ip
 					break
 				}

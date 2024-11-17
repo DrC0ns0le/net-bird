@@ -45,9 +45,9 @@ func main() {
 	}
 
 	if *daemonMode {
+		utils.RemoveAllManagedRoutes()
 		for {
 			logging.Infof("Running in daemon mode...")
-			utils.RemoveAllManagedRoutes()
 			run()
 			// sleep for 2 minutes
 			time.Sleep(2 * time.Minute)
@@ -82,60 +82,6 @@ func run() {
 		if err != nil {
 			logging.Errorf("failed to get managed routes: %v", err)
 		}
-	}
-}
-
-func ShowAllInfo(ctx context.Context, routes []bird.Route) {
-
-	fmt.Println(strings.Repeat("-", 40))
-	fmt.Println("Printing all routes info...")
-	fmt.Println(strings.Repeat("-", 40))
-	fmt.Printf("Local AS Number: %d\n", config.ASNumber)
-	fmt.Println(strings.Repeat("-", 40))
-
-	for _, route := range routes {
-		fmt.Printf("Network: %s\n", route.Network)
-		fmt.Printf("Origin AS: %d\n", route.OriginAS)
-		fmt.Printf("Paths:\n")
-		for i, path := range route.Paths {
-			fmt.Printf("  Path %d:\n", i+1)
-			fmt.Printf("    Via: %d\n", path.AS)
-			fmt.Printf("    Path: -> %s\n", func(asPath []int) string {
-				strPath := make([]string, len(asPath))
-				for i, as := range asPath {
-					strPath[i] = fmt.Sprintf("%d", as)
-				}
-				return strings.Join(strPath, " -> ")
-			}(path.ASPath))
-			fmt.Printf("    Next Hop: %s\n", path.Next)
-			fmt.Printf("    Interface: %s\n", path.Interface)
-			fmt.Printf("    MED: %d\n", path.MED)
-			fmt.Printf("    Local Preference: %d\n", path.LocalPreference)
-			fmt.Printf("    Origin Type: %s\n", path.OriginType)
-			var totalCost float64
-			for i, as := range path.ASPath {
-
-				if as == 65000 {
-					break
-				}
-
-				var c float64
-				if i > 0 {
-					c = cost.GetPathCost(ctx, path.ASPath[i-1], as)
-				} else {
-					c = cost.GetPathCost(ctx, config.ASNumber, as)
-				}
-
-				if c == math.Inf(1) {
-					totalCost = math.Inf(1)
-					break
-				}
-				totalCost += c
-			}
-
-			fmt.Printf("    Total Cost: %f\n", totalCost)
-		}
-		fmt.Println(strings.Repeat("-", 40))
 	}
 }
 
@@ -176,27 +122,6 @@ func ShowAllInfoTable(ctx context.Context, routes []bird.Route) {
 		return strings.Join(strPath, " -> ")
 	}
 
-	// Helper function to calculate total cost for a path
-	calculateTotalCost := func(asPath []int, localAS int) float64 {
-		var totalCost float64
-		for i, as := range asPath {
-			if as == 65000 {
-				break
-			}
-			var c float64
-			if i > 0 {
-				c = cost.GetPathCost(ctx, asPath[i-1], as)
-			} else {
-				c = cost.GetPathCost(ctx, localAS, as)
-			}
-			if c == math.Inf(1) {
-				return math.Inf(1)
-			}
-			totalCost += c
-		}
-		return totalCost
-	}
-
 	// Process and print each route
 	for i, route := range routes {
 		// If not the first route, print a route separator
@@ -230,7 +155,7 @@ func ShowAllInfoTable(ctx context.Context, routes []bird.Route) {
 
 		// Calculate costs for all paths
 		for i, path := range route.Paths {
-			totalCost := calculateTotalCost(path.ASPath, config.ASNumber)
+			totalCost := CalculateTotalCost(ctx, path.ASPath, config.ASNumber)
 			pathsWithCosts[i] = pathWithCost{
 				path: path,
 				cost: totalCost,
@@ -281,39 +206,23 @@ func UpdateRoutes(ctx context.Context, routes []bird.Route, mode string) {
 		var chosenPathIndex int
 		minCost := math.Inf(1)
 		for i, path := range route.Paths {
-			var totalCost float64
-			for i, as := range path.ASPath {
-				if as == 65000 {
-					break
-				}
-
-				var c float64
-				if i > 0 {
-					c = cost.GetPathCost(ctx, path.ASPath[i-1], as)
-				} else {
-					c = cost.GetPathCost(ctx, config.ASNumber, as)
-				}
-
-				if c == math.Inf(1) {
-					totalCost = math.Inf(1)
-					break
-				}
-				totalCost += c
-			}
+			totalCost := CalculateTotalCost(ctx, path.ASPath, config.ASNumber)
 			if totalCost < minCost {
 				minCost = totalCost
 				chosenPathIndex = i
 			}
 		}
 
-		if route.Paths[chosenPathIndex].ASPath[0] == config.ASNumber {
+		if len(route.Paths[chosenPathIndex].ASPath) == 0 || route.Paths[chosenPathIndex].ASPath[0] == config.ASNumber {
 			if err := utils.RemoveRoute(route.Network); err != nil {
 				logging.Errorf("Error removing route for network %s: %v\n", route.Network, err)
 				os.Exit(1)
 			}
 		}
 
-		if err := utils.ConfigureRoute(route.Network, route.Paths[chosenPathIndex].Next, func() net.IP {
+		if len(route.Paths[chosenPathIndex].ASPath) == 0 {
+			continue
+		} else if err := utils.ConfigureRoute(route.Network, route.Paths[chosenPathIndex].Next, func() net.IP {
 			if mode == "v6" {
 				return outboundV6
 			} else {
@@ -371,4 +280,24 @@ func ShowManagedRoutes() error {
 	}
 
 	return nil
+}
+
+// CalculateTotalCost returns the total cost of a BGP path given its AS path and the local AS number.
+// The total cost is calculated as the sum of the costs of each hop in the path, plus 10000 for each hop.
+// If any of the intermediate costs are infinite, the total cost is set to infinity and returned.
+func CalculateTotalCost(ctx context.Context, asPath []int, localAS int) float64 {
+	var totalCost float64
+	for i, as := range asPath {
+		var c float64
+		if i > 0 {
+			c = cost.GetPathCost(ctx, asPath[i-1], as)
+		} else {
+			c = cost.GetPathCost(ctx, localAS, as)
+		}
+		if c == math.Inf(1) {
+			return math.Inf(1)
+		}
+		totalCost += c + 10000
+	}
+	return totalCost
 }

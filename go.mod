@@ -3,10 +3,12 @@ module github.com/DrC0ns0le/net-bird
 go 1.22.3
 
 require (
-	github.com/DrC0ns0le/net-perf v0.0.0-20241114150143-3b807f0632e3
+	github.com/DrC0ns0le/net-perf v0.0.0
 	github.com/vishvananda/netlink v1.3.0
 	golang.org/x/sys v0.27.0
 )
+
+replace github.com/DrC0ns0le/net-perf v0.0.0 => /home/jack/projects/net-perf
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

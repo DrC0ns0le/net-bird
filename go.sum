@@ -1,5 +1,3 @@
-github.com/DrC0ns0le/net-perf v0.0.0-20241114150143-3b807f0632e3 h1:QvDnXbEAsfNQqhrgkZdUCSlWofWJzoL4CXQt8eH9kDE=
-github.com/DrC0ns0le/net-perf v0.0.0-20241114150143-3b807f0632e3/go.mod h1:cZnIh9S+LOAh3MuSYLg1aTHpsuutielk2J5PTgewY/M=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
