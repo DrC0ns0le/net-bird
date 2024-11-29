@@ -6,7 +6,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DrC0ns0le/net-bird/logging"
 	"github.com/DrC0ns0le/net-perf/metrics"
+)
+
+const (
+	cacheExpiration = 15 * time.Second
 )
 
 type cacheEntry struct {
@@ -66,7 +71,7 @@ func GetPathCost(ctx context.Context, src, dst int) float64 {
 	globalCache.mu.Lock()
 	globalCache.cache[key] = cacheEntry{
 		cost:       cost,
-		expiration: time.Now().Add(1 * time.Minute),
+		expiration: time.Now().Add(cacheExpiration),
 	}
 	globalCache.mu.Unlock()
 
@@ -84,12 +89,18 @@ func SetPathCost(ctx context.Context, src, dst int) float64 {
 
 	_, cost, err := metrics.GetPreferredPath(ctx, src-64512, dst-64512)
 	if err != nil {
+		logging.Errorf("Error getting preferred path and cost for %d -> %d: %v\n", src, dst, err)
+		return 0
+	}
+
+	if cost == 0 {
+		logging.Errorf("Unexpected cost of 0 for %d -> %d\n", src, dst)
 		return 0
 	}
 
 	switch dst {
 	case 64512:
-		cost = 1.2 * cost
+		cost = 1.5 * cost
 	}
 
 	return cost

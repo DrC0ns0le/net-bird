@@ -27,6 +27,8 @@ var (
 	showRoutes   = flag.Bool("s", false, "Show managed routes")
 	daemonMode   = flag.Bool("d", false, "Run in daemon mode")
 
+	updateInterval = flag.Duration("interval", 1*time.Minute, "Update interval in minutes")
+
 	debugLevel = flag.Bool("debug", false, "Debug level")
 )
 
@@ -45,12 +47,15 @@ func main() {
 	}
 
 	if *daemonMode {
+		logging.Infof("Running in daemon mode...")
+		run()
 		utils.RemoveAllManagedRoutes()
 		for {
-			logging.Infof("Running in daemon mode...")
 			run()
-			// sleep for 2 minutes
-			time.Sleep(2 * time.Minute)
+			now := time.Now()
+			nextInterval := now.Truncate(*updateInterval).Add(*updateInterval)
+			sleepDuration := nextInterval.Sub(now)
+			time.Sleep(sleepDuration)
 		}
 	} else {
 		run()
@@ -155,7 +160,7 @@ func ShowAllInfoTable(ctx context.Context, routes []bird.Route) {
 
 		// Calculate costs for all paths
 		for i, path := range route.Paths {
-			totalCost := CalculateTotalCost(ctx, path.ASPath, config.ASNumber)
+			totalCost := CalculateTotalCost(ctx, path.ASPath)
 			pathsWithCosts[i] = pathWithCost{
 				path: path,
 				cost: totalCost,
@@ -206,7 +211,7 @@ func UpdateRoutes(ctx context.Context, routes []bird.Route, mode string) {
 		var chosenPathIndex int
 		minCost := math.Inf(1)
 		for i, path := range route.Paths {
-			totalCost := CalculateTotalCost(ctx, path.ASPath, config.ASNumber)
+			totalCost := CalculateTotalCost(ctx, path.ASPath)
 			if totalCost < minCost {
 				minCost = totalCost
 				chosenPathIndex = i
@@ -283,21 +288,21 @@ func ShowManagedRoutes() error {
 }
 
 // CalculateTotalCost returns the total cost of a BGP path given its AS path and the local AS number.
-// The total cost is calculated as the sum of the costs of each hop in the path, plus 10000 for each hop.
+// The total cost is calculated as the sum of the costs of each hop in the path, plus 10 for each additional hop.
 // If any of the intermediate costs are infinite, the total cost is set to infinity and returned.
-func CalculateTotalCost(ctx context.Context, asPath []int, localAS int) float64 {
+func CalculateTotalCost(ctx context.Context, asPath []int) float64 {
 	var totalCost float64
 	for i, as := range asPath {
 		var c float64
 		if i > 0 {
 			c = cost.GetPathCost(ctx, asPath[i-1], as)
 		} else {
-			c = cost.GetPathCost(ctx, localAS, as)
+			c = cost.GetPathCost(ctx, config.ASNumber, as)
 		}
 		if c == math.Inf(1) {
 			return math.Inf(1)
 		}
-		totalCost += c + 10000
+		totalCost += c + 10
 	}
 	return totalCost
 }

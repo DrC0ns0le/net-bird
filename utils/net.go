@@ -42,7 +42,7 @@ func GetOutboundIPs() (net.IP, net.IP, error) {
 	var ipv6Addr net.IP
 	for _, iface := range interfaces {
 		// Check if interface name starts with "e"
-		if !strings.HasPrefix(iface.Name, "e") && iface.Name != "lo" {
+		if !strings.HasPrefix(iface.Name, "en") {
 			continue
 		}
 
@@ -60,7 +60,7 @@ func GetOutboundIPs() (net.IP, net.IP, error) {
 
 			// Check if this is an IPv6 address
 			if ip := ipNet.IP.To16(); ip != nil && ipNet.IP.To4() == nil {
-				if ip.IsPrivate() && strings.HasPrefix(ip.String(), "fdac:c9:") && strings.HasSuffix(ip.String(), "::2") {
+				if ip.IsPrivate() {
 					ipv6Addr = ip
 					break
 				}
