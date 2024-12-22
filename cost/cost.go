@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DrC0ns0le/net-bird/logging"
+	"github.com/DrC0ns0le/net-perf/logging"
 	"github.com/DrC0ns0le/net-perf/metrics"
 )
 

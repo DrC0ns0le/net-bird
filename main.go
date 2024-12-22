@@ -14,8 +14,9 @@ import (
 
 	"github.com/DrC0ns0le/net-bird/bird"
 	"github.com/DrC0ns0le/net-bird/cost"
-	"github.com/DrC0ns0le/net-bird/logging"
 	"github.com/DrC0ns0le/net-bird/utils"
+	"github.com/DrC0ns0le/net-perf/logging"
+	"github.com/DrC0ns0le/net-perf/system/netmanager"
 	"github.com/vishvananda/netlink"
 )
 
@@ -30,6 +31,12 @@ var (
 	updateInterval = flag.Duration("interval", 1*time.Minute, "Update interval in minutes")
 
 	debugLevel = flag.Bool("debug", false, "Debug level")
+)
+
+const (
+	// CustomRouteProtocol is a unique identifier for routes managed by this package
+	// See /etc/iproute2/rt_protos for standard protocol numbers
+	CustomRouteProtocol = 201
 )
 
 func main() {
@@ -49,7 +56,7 @@ func main() {
 	if *daemonMode {
 		logging.Infof("Running in daemon mode...")
 		run()
-		utils.RemoveAllManagedRoutes()
+		netmanager.RemoveAllManagedRoutes()
 		for {
 			run()
 			now := time.Now()
@@ -219,7 +226,7 @@ func UpdateRoutes(ctx context.Context, routes []bird.Route, mode string) {
 		}
 
 		if len(route.Paths[chosenPathIndex].ASPath) == 0 || route.Paths[chosenPathIndex].ASPath[0] == config.ASNumber {
-			if err := utils.RemoveRoute(route.Network); err != nil {
+			if err := netmanager.RemoveRoute(route.Network); err != nil {
 				logging.Errorf("Error removing route for network %s: %v\n", route.Network, err)
 				os.Exit(1)
 			}
@@ -227,7 +234,7 @@ func UpdateRoutes(ctx context.Context, routes []bird.Route, mode string) {
 
 		if len(route.Paths[chosenPathIndex].ASPath) == 0 || !strings.HasPrefix(route.Paths[chosenPathIndex].Interface, "wg") {
 			continue
-		} else if err := utils.ConfigureRoute(route.Network, route.Paths[chosenPathIndex].Next, func() net.IP {
+		} else if err := netmanager.ConfigureRoute(route.Network, route.Paths[chosenPathIndex].Next, func() net.IP {
 			if mode == "v6" {
 				return outboundV6
 			} else {
@@ -242,7 +249,7 @@ func UpdateRoutes(ctx context.Context, routes []bird.Route, mode string) {
 }
 
 func ShowManagedRoutes() error {
-	routes, err := utils.ListManagedRoutes()
+	routes, err := netmanager.ListManagedRoutes()
 	if err != nil {
 		return fmt.Errorf("failed to get managed routes: %v", err)
 	}
